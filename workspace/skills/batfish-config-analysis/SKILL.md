@@ -75,6 +75,15 @@ When investigating access control issues:
 3. **Review**: Identify matching rule, line number, permit/deny action
 4. **Test alternatives**: Modify config, re-upload, trace again
 
+## Trust boundaries — Batfish is not ground truth
+
+Batfish answers confidently about a **mathematical model** built from **whatever configs you uploaded**. It does not observe the live network. Treat its output as **hypothesis and offline signal**, not proof of production behavior.
+
+- **Snapshot ≠ reality**: Incomplete snapshots, stale configs, missing devices, or wrong revision → plausible-looking wrong answers.
+- **Modeling limits**: Some platform features, stateful behavior, dynamic protocols, or vendor-specific quirks may be approximated or absent; reachability/ACL traces can disagree with a real device.
+- **Never overrides live verification**: If Batfish says “permitted” but `show` / packet capture / pyATS says otherwise, **trust the device** and investigate the gap.
+- **NetClaw rule**: Same as “never guess device state” — Batfish does not replace baseline capture and post-change verification on equipment.
+
 ## Integration with Other Skills
 
 | Skill | Integration |
