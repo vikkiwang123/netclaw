@@ -27,6 +27,22 @@
 
 **网络变更不是单点操作，而是一个带门禁、基线、实施、验证、回退、审计的多阶段工作流。**
 
+### 可视化：主链路一览
+
+```mermaid
+flowchart LR
+  SN["ServiceNow<br/>治理门禁"]
+  PY["pyATS<br/>Baseline / Apply / Verify"]
+  BF["Batfish<br/>离线验证"]
+  NB["NetBox<br/>SoT 对账"]
+  GA["GAIT<br/>审计"]
+
+  SN --> PY --> BF --> NB
+  PY -.->|审计 / turn| GA
+  BF -.->|证据| GA
+  NB -.->|证据| GA
+```
+
 ---
 
 ## 2. 三层结构：Skill / MCP / Tool
@@ -93,11 +109,51 @@ Tool 是可执行的最小原子能力。
 
 **一个个被 Skill 调度的小能力单元。**
 
+### 可视化：三层与调用关系
+
+```mermaid
+flowchart TB
+  subgraph skill["Skill · 方法论层"]
+    S["编排流程 · 门禁 · 何时停止 · 记录与验证标准"]
+  end
+  subgraph mcp["MCP · 系统接入层"]
+    M["协议/接口 → 可调用工具"]
+  end
+  subgraph tool["Tool · 最小动作层"]
+    T["show · running-config · ping · configure · validate · record"]
+  end
+
+  skill -->|调度| mcp
+  mcp -->|暴露| tool
+```
+
 ---
 
 ## 3. Cisco 网络变更流程：完整拆解
 
 下面按真实变更链路来拆。
+
+### 可视化：阶段 0～7 总览
+
+```mermaid
+flowchart TB
+  P0["阶段0 治理门禁<br/>ServiceNow"]
+  P1["阶段1 Pre-check / Baseline<br/>pyATS + health"]
+  P2["阶段2 配置合法性与影响<br/>Batfish"]
+  P3["阶段3 SoT 一致性<br/>NetBox reconcile"]
+  P4["阶段4 实施<br/>pyATS configure"]
+  P5["阶段5 变更后验证<br/>pyATS + health"]
+  P6["阶段6 回退与闭环<br/>pyATS + ServiceNow"]
+  P7["阶段7 审计与追溯<br/>GAIT"]
+
+  P0 --> P1 --> P2 --> P3 --> P4 --> P5 --> P6
+  P1 -.-> P7
+  P2 -.-> P7
+  P3 -.-> P7
+  P4 -.-> P7
+  P5 -.-> P7
+  P6 -.-> P7
+```
 
 ### 阶段 0：治理门禁
 
@@ -342,6 +398,25 @@ Tool 是可执行的最小原子能力。
 
 这是最值得给别人讲清楚的部分。
 
+### 可视化：五维设计心智模型
+
+```mermaid
+mindmap
+  root((Tool 设计))
+    语义边界
+      show / running-config / logging / ping / configure / dynamic_test
+    只读·可写·审计
+      只读查询
+      受控写入
+      证据链
+    映射变更阶段
+      Pre-check / Validation / Apply / Rollback / Audit
+    内建安全
+      show 白名单 · configure 禁 destructive · dynamic_test 沙箱
+    输出可衔接
+      Genie JSON · diff 结构 · discrepancy · gait 事件
+```
+
 ## 4.1 第一维：按语义边界拆 tool
 
 这个仓没有做“大而全”的单一执行器，而是把能力拆开：
@@ -406,6 +481,21 @@ Tool 是可执行的最小原子能力。
 - 不改网络
 - 改的是证据链
 
+### 可视化：只读 / 受控写入 / 审计
+
+```mermaid
+flowchart LR
+  subgraph R["只读查询类"]
+    R1["不改设备<br/>评审 · 基线 · 诊断"]
+  end
+  subgraph W["受控写入类"]
+    W1["允许写入<br/>须由 Skill / 流程约束"]
+  end
+  subgraph A["审计类"]
+    A1["不改网络<br/>改证据链"]
+  end
+```
+
 ---
 
 ## 4.3 第三维：按阶段设计工具组
@@ -421,6 +511,32 @@ Tool 是可执行的最小原子能力。
 这对培训别人非常重要：
 
 **你不是在教“有哪些 tool”，而是在教“每个阶段该用哪组 tool”。**
+
+### 可视化：工具组与变更阶段映射
+
+```mermaid
+flowchart LR
+  subgraph stages["变更阶段"]
+    S1[Pre-check]
+    S2[Validation]
+    S3[Apply]
+    S4[Rollback]
+    S5[Audit]
+  end
+  subgraph groups["工具组"]
+    G1[基线/ show / ping]
+    G2[Batfish · NetBox 校验]
+    G3[configure]
+    G4[configure + SNOW 更新]
+    G5[gait_*]
+  end
+
+  S1 --> G1
+  S2 --> G2
+  S3 --> G3
+  S4 --> G4
+  S5 --> G5
+```
 
 ---
 
@@ -456,6 +572,25 @@ Tool 是可执行的最小原子能力。
 这说明它的设计思路是：
 
 **不要把“安全”交给操作者自觉，而是直接体现在 tool 边界里。**
+
+### 可视化：pyATS 相关工具的安全边界（示意）
+
+```mermaid
+flowchart TB
+  subgraph show["pyats_run_show_command"]
+    A1["必须以 show 开头"]
+    A2["禁止 pipe / redirect / shell"]
+    A3["禁止 copy·delete·erase·reload·write·configure"]
+  end
+  subgraph cfg["pyats_configure_device"]
+    B1["禁止手敲 configure terminal / end"]
+    B2["block write erase · erase · reload · delete · format"]
+  end
+  subgraph dyn["pyats_run_dynamic_test"]
+    C1["无文件系统 · 无网络 · 无子进程"]
+    C2["禁止 eval/exec/open · 纯校验"]
+  end
+```
 
 ---
 
@@ -581,6 +716,37 @@ Tool 是可执行的最小原子能力。
 4. 变更后验证兑现预期
 5. 具备回退与恢复能力
 
+### 可视化：`pyats-config-mgmt` 五层判断逻辑
+
+```mermaid
+flowchart TB
+  L1["① 方案结构是否完整<br/>改什么 · 为什么 · 效果 · 风险 · 验证 · 回退"]
+  L2["② 是否建立在现网基线之上<br/>running-config · 对象状态 · 连通性"]
+  L3["③ 是否符合实施最佳实践<br/>单逻辑变更 · conf t 边界 · 对象完整性"]
+  L4["④ 是否兑现预期效果<br/>日志 · 落地 · 与 baseline 对比"]
+  L5["⑤ 是否可回退<br/>inverse/baseline · 回退后验证"]
+
+  L1 --> L2 --> L3 --> L4 --> L5
+```
+
+### 可视化：与周边 skill 的分工（非独立“静态评审引擎”）
+
+```mermaid
+flowchart LR
+  subgraph core["pyats-config-mgmt"]
+    X["实施与验证型 skill"]
+  end
+  subgraph plus["需组合的能力"]
+    B["batfish-config-analysis<br/>离线合法性/影响"]
+    S["servicenow-change-workflow<br/>治理门禁"]
+    N["netbox-reconcile<br/>SoT 一致性"]
+  end
+
+  B -.-> core
+  S -.-> core
+  N -.-> core
+```
+
 如果要做更强的“方案合法性/影响分析”，这个 skill 本身并不独立完成，而是要结合：
 
 - `batfish-config-analysis` 做离线验证
@@ -615,6 +781,37 @@ Tool 是可执行的最小原子能力。
 
 1. 路由结果差异
 2. 可达性结果差异
+
+### 可视化：`batfish_diff_configs` 执行顺序与两条分析线
+
+```mermaid
+flowchart TB
+  S0["连接 Batfish · 切 network"]
+  S1["list_snapshots：reference / candidate 存在？"]
+  S2{"两 snapshot 相同？"}
+  S3["直接返回空 diff（边界优化）"]
+  S4["include_routes：路由表 diff<br/>主键 Node·Network·Protocol · 值 Next_Hop"]
+  S5["include_reachability：differentialReachability<br/>old/new disposition"]
+  S6["汇总 summary · route_diffs · reachability_diffs"]
+
+  S0 --> S1
+  S1 --> S2
+  S2 -->|是| S3
+  S2 -->|否| S4
+  S4 --> S5 --> S6
+```
+
+```mermaid
+flowchart LR
+  subgraph CP["控制平面"]
+    R["路由结果<br/>ADDED / REMOVED / CHANGED"]
+  end
+  subgraph DP["数据平面行为"]
+    D["可达性差异<br/>src/dst · disposition 变化"]
+  end
+
+  CP --- DP
+```
 
 ### 第一步：切到 Batfish network 并检查 snapshot 是否存在
 
@@ -784,6 +981,17 @@ Tool 是可执行的最小原子能力。
 
 下面给一份讲解时可直接引用的“核心路径索引”。
 
+### 可视化：按主题的 skill / 代码路径（分类索引，非执行顺序）
+
+```mermaid
+flowchart TB
+  SNW["治理：servicenow-change-workflow"]
+  PY["现网实施/健康：pyats-config-mgmt · pyats-network · pyats-health-check"]
+  BF["离线分析：batfish-config-analysis · batfish-mcp（server 实现）"]
+  NB["SoT：netbox-reconcile"]
+  GA["审计：gait-session-tracking"]
+```
+
 ### 变更治理
 
 - `workspace/skills/servicenow-change-workflow/SKILL.md`
@@ -846,6 +1054,17 @@ Tool 是可执行的最小原子能力。
 
 这样别人最容易理解。
 
+### 可视化：推荐讲解顺序（业务 → 技术 → 原子能力）
+
+```mermaid
+flowchart TB
+  B["① 业务流程<br/>能不能做 · 健康吗 · 方案合法吗 · 实施 · 验证 · 回退 · 审计"]
+  T["② 技术映射<br/>SNOW / pyATS / Batfish / NetBox / GAIT"]
+  A["③ 原子能力<br/>show · config · ping · validate · diff · reconcile · record"]
+
+  B --> T --> A
+```
+
 ---
 
 ## 7. 最重要的启发
@@ -863,6 +1082,20 @@ Tool 是可执行的最小原子能力。
 一句话说：
 
 **在这个仓里，网络变更不是一条命令，而是一条被 Skill 编排、被 MCP 承载、被 Tool 落地的完整业务链路。**
+
+### 可视化：标准化工作流要素
+
+```mermaid
+flowchart LR
+  G[治理门禁] --> L[现网基线] --> O[离线分析] --> S[SoT 校验] --> I[实施与验证] --> R[回退]
+  A[审计<br/>贯穿各阶段]
+  G -.-> A
+  L -.-> A
+  O -.-> A
+  S -.-> A
+  I -.-> A
+  R -.-> A
+```
 
 ---
 
